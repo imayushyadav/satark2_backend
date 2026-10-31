@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const bcrypt = require('bcryptjs');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const { User, Alert } = require('./models');
@@ -26,35 +27,79 @@ app.get('/', (req, res) => {
 // ----------------------------------------------------
 
 
-app.post('/api/users/register', async (req, res) => {
-  console.log('Incoming Register Request Body:', req.body);
-  try {
-    const { name, phone, emergencyContacts } = req.body;
+// REGISTER ROUTE
+app.post('/api/auth/register', async (req, res) => {
+    try {
+        const { username, fullName, name, phone, password, bloodGroup, medicalNotes } = req.body;
+        const displayName = fullName || name;
 
-    if (!name || !phone) {
-      return res.status(400).json({ error: 'Name and phone are required' });
+        // 1. Validation checks
+        if (!username || !password || !displayName || !phone) {
+            return res.status(400).json({
+                success: false,
+                message: 'All fields (Username, Password, Name, Phone) are required.'
+            });
+        }
+
+        if (password.length < 6) {
+            return res.status(400).json({
+                success: false,
+                message: 'Password must be at least 6 characters long.'
+            });
+        }
+
+        const normalizedUsername = username.trim().toLowerCase();
+
+        // 2. Check if username already exists in MongoDB
+        const existingUser = await User.findOne({ username: normalizedUsername });
+        if (existingUser) {
+            return res.status(409).json({
+                success: false,
+                message: 'This username is already taken. Please choose a different one.'
+            });
+        }
+
+        // 3. Hash the password
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        // 4. Save new user
+        const newUser = new User({
+            username: normalizedUsername,
+            password: hashedPassword,
+            name: displayName.trim(),
+            phone: phone.trim(),
+            bloodGroup: bloodGroup || '',
+            medicalNotes: medicalNotes || ''
+        });
+
+        const savedUser = await newUser.save();
+
+        return res.status(201).json({
+            success: true,
+            message: 'Account created successfully.',
+            user: {
+                id: savedUser._id,
+                username: savedUser.username,
+                name: savedUser.name,
+                phone: savedUser.phone
+            }
+        });
+
+    } catch (error) {
+        console.error('Register error:', error);
+        if (error.code === 11000) {
+            return res.status(409).json({
+                success: false,
+                message: 'This username or phone number is already registered.'
+            });
+        }
+        return res.status(500).json({
+            success: false,
+            message: 'Server error during registration. Please try again later.'
+        });
     }
-
-    // Check if user already exists
-    let user = await User.findOne({ phone });
-
-    if (user) {
-      user.name = name;
-      if (emergencyContacts) user.emergencyContacts = emergencyContacts;
-      await user.save();
-      return res.status(200).json({ message: 'User updated successfully', user });
-    }
-
-    // Create new user
-    user = new User({ name, phone, emergencyContacts: emergencyContacts || [] });
-    await user.save();
-
-    res.status(201).json({ message: 'User registered successfully', user });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
 });
-
 // ----------------------------------------------------
 // ROUTE 2: TRIGGER SOS (LOG INCIDENT & LIVE LOCATION)
 // ----------------------------------------------------
@@ -94,6 +139,58 @@ app.post('/api/sos/trigger', async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
+});
+
+// LOGIN ROUTE
+app.post('/api/auth/login', async (req, res) => {
+    try {
+        const { username, password } = req.body;
+
+        if (!username || !password) {
+            return res.status(400).json({
+                success: false,
+                message: 'Please enter both username and password.'
+            });
+        }
+
+        const normalizedUsername = username.trim().toLowerCase();
+
+        // 1. Check if user exists
+        const user = await User.findOne({ username: normalizedUsername });
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found. Please check your username or sign up.'
+            });
+        }
+
+        // 2. Compare hashed password
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+            return res.status(401).json({
+                success: false,
+                message: 'Incorrect password. Please verify and try again.'
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: 'Login successful.',
+            user: {
+                id: user._id,
+                username: user.username,
+                name: user.name,
+                phone: user.phone
+            }
+        });
+
+    } catch (error) {
+        console.error('Login error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Server error during login. Please try again later.'
+        });
+    }
 });
 
 // ----------------------------------------------------
