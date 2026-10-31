@@ -1,46 +1,60 @@
 const mongoose = require('mongoose');
 
-const UserSchema = new mongoose.Schema({
-    username: {
-        type: String,
-        required: [true, 'Username is required'],
-        unique: true,           // Ensures no two users can register with the same username
-        trim: true,             // Removes leading/trailing spaces
-        lowercase: true,        // Automatically converts to lowercase (e.g., Ayush -> ayush)
-        minlength: [3, 'Username must be at least 3 characters long'],
-        maxlength: [30, 'Username cannot exceed 30 characters'],
-        match: [/^[a-zA-Z0-9_]+$/, 'Username can only contain letters, numbers, and underscores']
-    },
-    fullName: {
-        type: String,
-        required: [true, 'Full name is required'],
-        trim: true
-    },
-    phone: {
-        type: String,
-        required: [true, 'Phone number is required'],
-        trim: true
-    },
-    password: {
-        type: String,
-        required: [true, 'Password is required'],
-        minlength: [6, 'Password must be at least 6 characters long']
-    },
-    bloodGroup: {
-        type: String,
-        default: ''
-    },
-    medicalNotes: {
-        type: String,
-        default: ''
-    },
-    createdAt: {
-        type: Date,
-        default: Date.now
+// 1. User Profile & Credentials
+const userSchema = new mongoose.Schema({
+  username: { 
+    type: String, 
+    required: true, 
+    unique: true, 
+    trim: true, 
+    lowercase: true 
+  },
+  password: { 
+    type: String, 
+    required: true 
+  },
+  name: { 
+    type: String, 
+    required: true, 
+    trim: true 
+  },
+  phone: { 
+    type: String, 
+    required: true, 
+    trim: true 
+  },
+  bloodGroup: { 
+    type: String, 
+    default: '' 
+  },
+  medicalNotes: { 
+    type: String, 
+    default: '' 
+  },
+  emergencyContacts: [
+    {
+      name: { type: String, required: true },
+      phone: { type: String, required: true },
+      relation: { type: String, default: 'Contact' }
     }
+  ],
+  createdAt: { type: Date, default: Date.now }
 });
 
-const User = mongoose.model('User', UserSchema);
+// 2. SOS Alert Record (Location + Status)
+const alertSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  userName: { type: String },
+  userPhone: { type: String },
+  latitude: { type: Number, required: true },
+  longitude: { type: Number, required: true },
+  batteryLevel: { type: Number, default: null },
+  status: { type: String, enum: ['ACTIVE', 'RESOLVED'], default: 'ACTIVE' },
+  timestamp: { type: Date, default: Date.now }
+});
+
+// Compile models
+const User = mongoose.model('User', userSchema);
 const Alert = mongoose.model('Alert', alertSchema);
 
 module.exports = { User, Alert };
